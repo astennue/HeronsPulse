@@ -1,0 +1,670 @@
+// HeronPulse Academic OS - Database Schema
+// College of Computing and Information Sciences, University of Makati
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  student
+  faculty
+  super_admin
+}
+
+enum UserStatus {
+  active
+  inactive
+  suspended
+}
+
+enum TaskStatus {
+  backlog
+  todo
+  in_progress
+  in_review
+  done
+}
+
+enum TaskPriority {
+  urgent
+  high
+  medium
+  low
+}
+
+enum ProjectStatus {
+  active
+  completed
+  on_hold
+  archived
+}
+
+enum NotificationType {
+  task_assigned
+  deadline_approaching
+  mention
+  comment_reply
+  milestone_due
+  achievement_unlocked
+  workload_alert
+  intervention_sent
+  badge_awarded
+}
+
+enum RiskLevel {
+  Low
+  Moderate
+  High
+  Critical
+}
+
+enum BadgeRarity {
+  common
+  uncommon
+  rare
+  epic
+  legendary
+}
+
+enum ReportFrequency {
+  weekly
+  monthly
+}
+
+enum ReportFormat {
+  pdf
+  csv
+  excel
+}
+
+enum InterventionStatus {
+  pending
+  acknowledged
+  resolved
+}
+
+// ==================== USERS ====================
+
+model User {
+  id                String      @id @default(cuid())
+  email             String      @unique
+  password          String?     // Hashed password for email/password auth
+  displayName       String
+  avatarUrl         String?
+  role              UserRole    @default(student)
+  status            UserStatus  @default(active)
+  courseCodes       String      @default("") // JSON array of course codes
+  bio               String?
+  isOnline          Boolean     @default(false)
+  lastSeenAt        DateTime    @default(now())
+  
+  // Email Verification
+  emailVerified     DateTime?
+  verificationToken String?
+  
+  // Gamification
+  currentStreak     Int         @default(0)
+  longestStreak     Int         @default(0)
+  tasksCompleted    Int         @default(0)
+  deadlinesMet      Int         @default(0)
+  earlySubmissions  Int         @default(0)
+  commentsMade      Int         @default(0)
+  researchCompleted Int         @default(0)
+  productivityScore Float       @default(0)
+  totalPoints       Int         @default(0)
+  
+  // Admin tracking
+  lastImpersonatedAt DateTime?
+  lastImpersonatedBy String?
+  
+  // Session tracking
+  loginCount        Int       @default(0)
+  lastLoginAt       DateTime?
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  // Relations
+  studentProfile     StudentProfile?
+  ownedProjects      Project[]
+  projectMemberships ProjectMember[]
+  createdBoards      Board[]
+  createdTasks       Task[]         @relation("TaskCreator")
+  assignedTasks      TaskAssignee[]
+  subtasks           Subtask[]
+  attachments        Attachment[]
+  comments           Comment[]
+  ownedChannels      Channel[]
+  channelMemberships ChannelMember[]
+  sentMessages       Message[]
+  notifications      Notification[]
+  workloadData       WorkloadData[]
+  forecastResults    ForecastResult[]
+  pomodoroSessions   PomodoroSession[]
+  activityLogs       ActivityLog[]
+  ownedClasses       Class[]        @relation("ClassOwner")
+  classMemberships   ClassMember[]
+  sentInterventions  Intervention[] @relation("InterventionSender")
+  receivedInterventions Intervention[] @relation("InterventionReceiver")
+  awardedBadges      UserBadge[]
+  createdBadges      Badge[]        @relation("BadgeCreator")
+  scheduledReports   ScheduledReport[]
+  createdInvitations ClassInvitation[]
+
+  @@map("users")
+}
+
+// ==================== CLASSES ====================
+
+model Class {
+  id            String   @id @default(cuid())
+  name          String
+  subjectCode   String   // e.g., CS401, IT301
+  section       String?  // e.g., "BSCS-3A", "BSIT-2B"
+  description   String?
+  schedule      String?  // e.g., "MWF 9:00-10:00 AM"
+  room          String?
+  semester      String   // e.g., "2025-2026 Second Semester"
+  ownerId       String
+  owner         User     @relation("ClassOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  members       ClassMember[]
+  classTasks    ClassTask[]
+  interventions Intervention[]
+  invitations   ClassInvitation[]
+
+  @@map("classes")
+}
+
+model ClassInvitation {
+  id          String   @id @default(cuid())
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  code        String   @unique // Unique invitation code
+  email       String?  // Specific email invite (optional)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime // Expiration date (1 week by default)
+  usedAt      DateTime?
+  isUsed      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("class_invitations")
+}
+
+model ClassMember {
+  id          String   @id @default(cuid())
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt    DateTime @default(now())
+
+  @@unique([classId, userId])
+  @@map("class_members")
+}
+
+model ClassTask {
+  id          String   @id @default(cuid())
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  taskId      String
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("class_tasks")
+}
+
+// ==================== INTERVENTIONS ====================
+
+model Intervention {
+  id          String             @id @default(cuid())
+  classId     String?
+  class       Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
+  senderId    String
+  sender      User               @relation("InterventionSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId  String
+  receiver    User               @relation("InterventionReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  type        String             // warning, support, meeting, reminder
+  subject     String
+  message     String
+  notes       String?            // Additional notes for updates
+  status      InterventionStatus @default(pending)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  resolvedAt  DateTime?
+
+  @@map("interventions")
+}
+
+// ==================== BADGES ====================
+
+model Badge {
+  id              String       @id @default(cuid())
+  name            String
+  description     String
+  icon            String       // emoji or icon name
+  rarity          BadgeRarity  @default(common)
+  points          Int          @default(0)
+  criteria        String       // JSON: { type: "task_count", value: 10 }
+  isActive        Boolean      @default(true)
+  createdById     String?
+  createdBy       User?        @relation("BadgeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  userBadges      UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId     String
+  badge       Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  awardedById String?  // null if auto-awarded
+  awardedAt   DateTime @default(now())
+  reason      String?  // optional reason for manual award
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ==================== SCHEDULED REPORTS ====================
+
+model ScheduledReport {
+  id          String          @id @default(cuid())
+  name        String
+  type        String          // student_performance, faculty_performance, class_summary
+  frequency   ReportFrequency
+  format      ReportFormat
+  recipients  String          // JSON array of emails
+  filters     String          @default("{}") // JSON object with filter criteria
+  isActive    Boolean         @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  ownerId     String
+  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("scheduled_reports")
+}
+
+// ==================== PROJECTS ====================
+
+model Project {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  status      ProjectStatus  @default(active)
+  startDate   DateTime?
+  endDate     DateTime?
+  courseCode  String?
+  color       String         @default("#1A56DB")
+  icon        String         @default("📁")
+  progress    Float          @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  members     ProjectMember[]
+  boards      Board[]
+  tasks       Task[]         @relation("TaskProject")
+  milestones  Milestone[]
+  channels    Channel[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("member") // owner, admin, member
+  joinedAt  DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+// ==================== BOARDS ====================
+
+model Board {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tasks       Task[]
+
+  @@map("boards")
+}
+
+// ==================== TASKS ====================
+
+model Task {
+  id             String       @id @default(cuid())
+  boardId        String
+  board          Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project      @relation("TaskProject", fields: [projectId], references: [id], onDelete: Cascade)
+  createdById    String?
+  createdBy      User?        @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  title          String
+  description    String?
+  status         TaskStatus   @default(todo)
+  priority       TaskPriority @default(medium)
+  startDate      DateTime?    // For Gantt chart
+  dueDate        DateTime?
+  tags           String       @default("") // JSON array of tags
+  courseCode     String?
+  estimatedHours Float        @default(0)
+  actualHours    Float        @default(0)
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  assignees      TaskAssignee[]
+  subtasks       Subtask[]
+  attachments    Attachment[]
+  comments       Comment[]
+  milestoneTasks MilestoneTask[]
+  pomodoroSessions PomodoroSession[]
+
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([taskId, userId])
+  @@map("task_assignees")
+}
+
+model Subtask {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  title       String
+  isCompleted Boolean  @default(false)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@map("subtasks")
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  taskId     String?
+  task       Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fileName   String
+  fileUrl    String
+  fileSize   Int?
+  uploadedAt DateTime @default(now())
+
+  @@map("attachments")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  parentId  String?
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies")
+  mentions  String   @default("") // JSON array of user IDs
+  reactions String   @default("[]") // JSON array of reactions
+  isEdited  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("comments")
+}
+
+// ==================== MILESTONES ====================
+
+model Milestone {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime?
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  milestoneTasks MilestoneTask[]
+
+  @@map("milestones")
+}
+
+model MilestoneTask {
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([milestoneId, taskId])
+  @@map("milestone_tasks")
+}
+
+// ==================== MESSAGING ====================
+
+model Channel {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  isPrivate   Boolean  @default(false)
+  type        String   @default("channel") // channel, dm
+  createdAt   DateTime @default(now())
+
+  // Relations
+  members     ChannelMember[]
+  messages    Message[]
+
+  @@map("channels")
+}
+
+model ChannelMember {
+  id        String   @id @default(cuid())
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+
+  @@unique([channelId, userId])
+  @@map("channel_members")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  channelId   String
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content     String
+  type        String   @default("text") // text, file, system
+  parentId    String?
+  parent      Message? @relation("MessageReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Message[] @relation("MessageReplies")
+  mentions    String   @default("") // JSON array of user IDs
+  reactions   String   @default("[]") // JSON array of reactions
+  isEdited    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  attachments MessageAttachment[]
+
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id         String   @id @default(cuid())
+  messageId  String
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileUrl    String
+  fileSize   Int?
+  uploadedAt DateTime @default(now())
+
+  @@map("message_attachments")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+// ==================== ANALYTICS ====================
+
+model WorkloadData {
+  id                   String     @id @default(cuid())
+  userId               String
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordedDate         DateTime   @default(now())
+  // ALI Factors (6 factors as per proposal)
+  taskDensity          Float      @default(0)
+  assessmentIntensity  Float      @default(0)
+  deadlineClustering   Float      @default(0)
+  researchLoad         Float      @default(0)
+  extracurricularLoad  Float      @default(0)
+  partTimeWork         Float      @default(0)
+  // Computed values
+  aliScore             Float      @default(0)
+  riskLevel            RiskLevel  @default(Low)
+  createdAt            DateTime   @default(now())
+
+  @@unique([userId, recordedDate])
+  @@map("workload_data")
+}
+
+// ==================== STUDENT PROFILE ====================
+
+model StudentProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Academic Info
+  studentNumber        String?
+  yearLevel            String?  // 1st Year, 2nd Year, 3rd Year, 4th Year
+  program              String?  // BSCS, BSIT, Diploma
+  // Extracurricular Activities
+  organizations        String   @default("[]") // JSON array: [{name: "CCS", position: "Secretary"}]
+  orgPositions         String   @default("[]") // JSON array of positions
+  extracurricularHours Int      @default(0) // Hours per week
+  // Work Information
+  hasPartTimeWork      Boolean  @default(false)
+  workHoursPerWeek     Int      @default(0)
+  workType             String?  // On-campus, Off-campus, Remote, Freelance
+  // Additional
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("student_profiles")
+}
+
+model ForecastResult {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  forecastDate  DateTime
+  horizonDays   Int
+  predictions   String   // JSON array of predictions
+  peakDate      DateTime?
+  peakScore     Float?
+  currentAli    Float?
+  generatedAt   DateTime @default(now())
+
+  @@unique([userId, forecastDate, horizonDays])
+  @@map("forecast_results")
+}
+
+// ==================== POMODORO ====================
+
+model PomodoroSession {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId           String?
+  task             Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  durationSeconds  Int
+  type             String   @default("focus") // focus, short_break, long_break
+  completed        Boolean  @default(true)
+  startedAt        DateTime
+  endedAt          DateTime
+
+  @@map("pomodoro_sessions")
+}
+
+// ==================== ACTIVITY LOG ====================
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entityType  String   // task, project, board, user, class, badge, etc.
+  entityId    String
+  action      String   // created, updated, deleted, awarded, etc.
+  metadata    String   @default("{}") // JSON object
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@map("activity_log")
+}

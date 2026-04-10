@@ -1,0 +1,39 @@
+{
+  "name": "HeronPulse Academic OS",
+  "short_name": "HeronPulse",
+  "description": "Academic workflow management for CCIS University of Makati",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0F1E",
+  "theme_color": "#1A56DB",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Tasks",
+      "url": "/boards",
+      "description": "View your tasks and boards"
+    },
+    {
+      "name": "Analytics",
+      "url": "/analytics",
+      "description": "View your workload analytics"
+    },
+    {
+      "name": "Messages",
+      "url": "/messages",
+      "description": "View your messages"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "screenshots": [],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

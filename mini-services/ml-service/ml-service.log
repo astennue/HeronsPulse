@@ -1,0 +1,16 @@
+
+    ╔══════════════════════════════════════════════════════════╗
+    ║         HeronPulse ML Service - ALI Prediction          ║
+    ╠══════════════════════════════════════════════════════════╣
+    ║  Port: 3030                                               ║
+    ║  Model: Gradient Boosting Regression                     ║
+    ║  Features: 6 ALI Factors                                 ║
+    ╚══════════════════════════════════════════════════════════╝
+    
+INFO:     Started server process [6710]
+INFO:     Waiting for application startup.
+🚀 Starting ML Service...
+🔧 No existing model found. Training new model...
+✅ Model trained and saved! R² = 0.8976
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:3030 (Press CTRL+C to quit)
